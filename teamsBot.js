@@ -11,7 +11,7 @@ const mysql = require('mysql2/promise');
 
 // --------------- Data ---------------
 const {assignUserRole} = require("./Data/dataManager");
-const {connectToMySQL} = require("./Data/sqlManager");
+//const {connectToMySQL} = require("./Data/sqlManager");
 // --------------- ConnectWise ---------------
 const {handleTicketRequest} = require("./ConnectWise/ticketManager");
 

@@ -1,5 +1,5 @@
 const {dataManager, hasCommandPermission, assignUserRole, permissionsPath} = require("../Data/dataManager");
-const {logCommand} = require("../Data/sqlManager");
+//const {logCommand} = require("../Data/sqlManager");
 const ticketManager = require("../ConnectWise/ticketManager");
 const ticketInfoCard = require("./ticketInformationCard");
 const adminCommandsCard = require("./adminCommandsCard");

@@ -97,4 +97,4 @@ async function insertSingleRow(name, email) {
       console.error('Error logging command:', error);
     }
   }
-  module.exports = { pool, connectToMySQL, insertSingleRow, logCommand};
+ // module.exports = { pool, connectToMySQL, insertSingleRow, logCommand};
