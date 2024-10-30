@@ -6,7 +6,8 @@
     },
     "description": "Microsoft Teams Toolkit hello world Bot sample",
     "engines": {
-        "node": "16 || 18"
+        "node": "18.x",
+        "npm": "10.x"
     },
     "author": "Microsoft",
     "license": "MIT",
