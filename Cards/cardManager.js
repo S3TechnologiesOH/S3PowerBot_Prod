@@ -93,7 +93,7 @@ async function onAdaptiveCardSubmit(context, authState) {
       return;
     }
 
-    await logCommand(authState.userDisplayName, submittedData.action);
+    //await logCommand(authState.userDisplayName, submittedData.action);
 
     switch (submittedData.action) {
   
