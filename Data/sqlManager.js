@@ -17,7 +17,10 @@ const parseConnectionString = (connectionString) => {
       }
     }
   });
-
+  console.log("User ID: ", config['user id'])
+  console.log("Password: ", config['password'])
+  console.log("Data Source: ", config['data source'])
+  console.log("Database: ", config['database'])
   return {
     host: config['data source'].split(':')[0],
     port: parseInt(config['data source'].split(':')[1], 10) || 3306,
