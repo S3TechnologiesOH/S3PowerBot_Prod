@@ -4,7 +4,7 @@ mysql = require('mysql2/promise');
 const connectionString = process.env.MYSQLCONNSTR_localdb;
 
 // Function to parse the MySQL connection string safely
-/*
+
 const parseConnectionString = (connectionString) => {
   const config = {};
   const parts = connectionString.split(';');
@@ -29,7 +29,7 @@ const parseConnectionString = (connectionString) => {
 const sqlconfig = parseConnectionString(connectionString);
 // Create a connection pool
 const pool = mysql.createPool(sqlconfig);
-*/
+
 
 async function connectToMySQL() {
     try {
@@ -97,4 +97,4 @@ async function insertSingleRow(name, email) {
       console.error('Error logging command:', error);
     }
   }
- // module.exports = { pool, connectToMySQL, insertSingleRow, logCommand};
+ module.exports = { pool, connectToMySQL, insertSingleRow, logCommand};
