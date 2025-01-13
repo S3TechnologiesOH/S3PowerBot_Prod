@@ -1,6 +1,6 @@
-const {fetch_ticket_by_id, fetch_time_entries_for_ticket} = require("./connectwiseAPI"); // ConnectWise API logic
+const {fetch_ticket_by_id, fetch_time_entries_for_ticket, fetch_ticket_tasks_by_id} = require("./connectwiseAPI"); // ConnectWise API logic
 const { get_attr_or_key } = require("./connectwiseHelpers");
-const { summarizeJSON } = require("../OpenAI/openaiSummarizer");
+const { summarizeJSON, createResolution } = require("../OpenAI/openaiSummarizer");
 
 async function handleTicketRequest(context, ticketId) {
     try {
@@ -9,12 +9,12 @@ async function handleTicketRequest(context, ticketId) {
 
       // Fetch related time entries
       const timeEntries = await fetch_time_entries_for_ticket(ticketId);
+      const ticketTasks = await fetch_ticket_tasks_by_id(ticketId);
 
       // Log the combined data to check if it's being passed correctly
       //console.log("Debug Log: Combined data being passed to OpenAI:", combinedData);
 
-      // Summarize the combined data
-      const combinedSummary = await summarizeJSON(context, timeEntries);
+      const combinedSummary = await summarizeJSON(context, ticketId, timeEntries, ticketTasks);
 
       // Send the formatted details back to the user
       const formattedTicketDetails =
@@ -28,8 +28,7 @@ async function handleTicketRequest(context, ticketId) {
         `**Assigned to:** ${get_attr_or_key(ticketInfo, "resources")}\n\n` +
         `**Actual Hours:** ${get_attr_or_key(ticketInfo, "actualHours")}\n\n`;
 
-      const fullMessage = `${formattedTicketDetails}\n\n**Time Entries Summary:**\n${combinedSummary}`;
-
+        const fullMessage = `${formattedTicketDetails}\n\n**Time Entries Summary:**\n${combinedSummary}`;
       // Split and send the message in chunks if too long
       const chunkSize = 2000;
       for (let i = 0; i < fullMessage.length; i += chunkSize) {
@@ -43,4 +42,12 @@ async function handleTicketRequest(context, ticketId) {
       console.error("Error fetching ticket or time entries:", error);
     }
   }
-module.exports = { handleTicketRequest };
+
+  async function handleResolutionRequest(context, ticketId) {
+    const ticketInfo = await fetch_ticket_by_id(ticketId);
+    const resolution = await createResolution(context, ticketInfo); // Await here
+    const fullMessage = `**Resolution:**\n\n ${resolution}`;
+    await context.sendActivity(fullMessage); // Ensure this is awaited if `sendActivity` is async
+}
+
+module.exports = { handleTicketRequest, handleResolutionRequest };

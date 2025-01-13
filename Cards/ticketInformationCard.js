@@ -23,7 +23,7 @@ async function showTicketInformationCard(context) {
         type: "Input.Text",
         id: "ticketId", // Input field for the ticket ID
         placeholder: "Enter Ticket ID",
-        isRequired: true,
+        isRequired: false,
         spacing: "Small",
       },
     ],

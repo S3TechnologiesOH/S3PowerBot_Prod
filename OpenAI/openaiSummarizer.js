@@ -28,11 +28,6 @@ async function getTicketData(ticketId) {
 
     const data = ticketId;
 
-    if (!data || !Array.isArray(data)) {
-      console.error("Invalid data received:", data);
-      throw new Error("Invalid data format. Expected an array.");
-    }
-
     console.log("Fetched data: ", data);
     return data;
 
@@ -42,20 +37,16 @@ async function getTicketData(ticketId) {
   }
 }
 
-async function summarizeJSON(context, ticketId, jsonEntries) {
+async function summarizeJSON(context, ticketId, ticketData, taskData) {
   try {
     console.log("Starting summarizeJSON function");
 
-    const ticketData = await getTicketData(ticketId, jsonEntries);
+    // Convert ticket data and task data to strings
+    const ticketString = JSON.stringify(ticketData, null, 2);
+    const tasksString = JSON.stringify(taskData, null, 2);
 
-    const simplifiedEntries = ticketData
-      .map(
-        (entry) =>
-          `ID: ${entry.id}\nNotes: ${entry._info.notes || "No notes"}`
-      )
-      .join("\n\n");
-
-    const promptMessage = `Summarize these entries:\n\n${simplifiedEntries}`;
+    // Combine both strings into one prompt message
+    const promptMessage = `Summarize the following information:\n\nTicket Data:\n${ticketString}\n\nTask Data:\n${tasksString}`;
     console.log("Prompt message created: ", promptMessage);
 
     if (!currentThread) {
@@ -114,6 +105,61 @@ async function summarizeJSON(context, ticketId, jsonEntries) {
     throw new Error("Failed to summarize JSON data.");
   }
 }
+async function createResolution(context, ticketData) {
+  try {
+    if (!context || typeof context.sendActivity !== 'function') {
+      throw new Error("Invalid context: sendActivity function not available.");
+    }
+    
+    // Convert ticket data to string format for prompt
+    const ticketString = JSON.stringify(ticketData, null, 2);
+    const promptMessage = `Create a resolution for this:\n${ticketString}`;
+    console.log("Prompt message created: ", promptMessage);
+
+    if (!currentThread) {
+      currentThread = await retryWithBackoff(() => client.beta.threads.create());
+      console.log("Thread created: ", currentThread);
+    }
+
+    // Create user message in the thread
+    const threadResponse = await retryWithBackoff(() =>
+      client.beta.threads.messages.create(currentThread.id, { role: "user", content: promptMessage })
+    );
+    console.log("User message added to thread: ", JSON.stringify(threadResponse));
+
+    const runResponse = await retryWithBackoff(() => client.beta.threads.runs.create(currentThread.id, {
+      assistant_id: "asst_ICtoA5LgyafXUbfFx5cyQB4m",
+      max_completion_tokens: 200,
+      temperature: 0.1,
+    }));
+    console.log("Run started: ", runResponse);
+    await context.sendActivity("Processing your resolution request. Please wait...");
+
+    // Waiting for the run to complete
+    let runStatus = runResponse.status;
+    while (["queued", "in_progress"].includes(runStatus)) {
+      console.log(`Current run status: ${runStatus}`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      const runStatusResponse = await client.beta.threads.runs.retrieve(currentThread.id, runResponse.id);
+      runStatus = runStatusResponse.status;
+      console.log(`Updated run status: ${runStatus}`);
+    }
+
+    // Await completion and extract message content
+    if (runStatus === "completed") {
+      const messagesResponse = await client.beta.threads.messages.list(currentThread.id);
+      const messageContent = extractMessageContent(messagesResponse); // This should be a synchronous function
+      console.log("Message Content: ", messageContent);
+      return messageContent; // Ensure this is the final returned content
+    } else {
+      throw new Error(`Run did not complete successfully. Status: ${runStatus}`);
+    }
+  } catch (error) {
+    console.error("Error creating resolution:", error);
+    throw new Error("Failed to create resolution.");
+  }
+}
 
 // Extract message content from the response
 function extractMessageContent(messagesResponse) {
@@ -134,7 +180,7 @@ function extractMessageContent(messagesResponse) {
 }
 
 // Retry with exponential backoff
-async function retryWithBackoff(fn, retries = 3) {
+async function retryWithBackoff(fn, retries = 10) {
   let delay = 1000;
   for (let i = 0; i < retries; i++) {
     try {
@@ -149,5 +195,5 @@ async function retryWithBackoff(fn, retries = 3) {
 }
 
 module.exports = {
-  summarizeJSON,
+  summarizeJSON, createResolution,
 };

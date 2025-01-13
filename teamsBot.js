@@ -11,9 +11,14 @@ const mysql = require('mysql2/promise');
 
 // --------------- Data ---------------
 const {assignUserRole} = require("./Data/dataManager");
-const {connectToMySQL} = require("./Data/sqlManager");
+const {queryDatabase, getTables, connectToMySQL, processDeals} = require("./Data/sqlManager");
+const { startWebhook } = require("./Webhooks/webhooks");
 // --------------- ConnectWise ---------------
 const {handleTicketRequest} = require("./ConnectWise/ticketManager");
+const {extractTermsAndConditions, getQuotes, exportQuotesToJson} = require("./CPQ/cpqAPI");
+// --------------- Apollo ---------------
+
+const { fetchDeals, fetchOpportunityActivities } = require("./Apollo/ApolloAPI");
 
 // --------------- MS Graph ---------------
 const authenticationHelper = require("./MSGraph/authenticationHelper");
@@ -21,24 +26,30 @@ const authenticationHelper = require("./MSGraph/authenticationHelper");
 // --------------- Cards ---------------
 const { sendWelcomeCard, onAdaptiveCardSubmit } = require("./Cards/cardManager");
 
+// --------------- OpenAI ---------------
+const { checkCompanies } = require("./OpenAI/openaiCompanyCheck");
+
+let authState = null;
 
 class TeamsBot extends TeamsActivityHandler {
   
   constructor(userState) {
     super();
-    this.userMessageId = null; // Track the last user message ID    
 
+    this.userMessageId = null; // Track the last user message ID    
     this.userState = userState;
     this.userAuthState = this.userState.createProperty("userAuthState");
+    connectToMySQL();
+    //queryDatabase()
+    
 
     this.onMessage(async (context, next) => {
-      connectToMySQL();
-
-      const authState = await this.userAuthState.get(context, {
+      authState = await this.userAuthState.get(context, {
         isAuthenticated: false,
         lastLoginMessageId: null,
       });
-    //Test
+      //checkCompanies(context, "Development LLC");
+
       // Store the user message ID to delete it later
       this.userMessageId = context.activity.id;
     
@@ -46,12 +57,18 @@ class TeamsBot extends TeamsActivityHandler {
         await authenticationHelper.initializeGraph(settings, context, authState);
         await authenticationHelper.greetUserAsync(context, authState);
         await sendWelcomeCard(context, authState);
+
+        //const activities = await fetchOpportunityActivities();
+        //console.log("Activities: ", activities);
+        /*const deals = await fetchDeals(100);
+        console.log("Deals: ", deals);
+        await processDeals(deals, true);*/
         console.log("Sent first welcome");
       } else {
         const userInput = context.activity.text?.trim().toLowerCase();
         console.log("User input: ", userInput);
         if (userInput) {
-          const isCommandHandled = await this.handleUserCommand(context, userInput, authState);
+          const isCommandHandled = await this.handleUserCommand(context, userInput);
           console.log("Command handled: ", isCommandHandled);
           if (!isCommandHandled) {
             await sendWelcomeCard(context, authState); // Show the welcome card if no valid command
@@ -72,7 +89,7 @@ class TeamsBot extends TeamsActivityHandler {
     });
   }    
 
-  async handleUserCommand(context, userInput, authState) {
+  async handleUserCommand(context, userInput) {
     const ticketRegex = /^\/ticket (\d+)$/;
     const roleAssignRegex = /^\/role assign (\w+) (\S+)$/;
   
@@ -109,4 +126,4 @@ class TeamsBot extends TeamsActivityHandler {
 
 }
 
-module.exports = {TeamsBot};
+module.exports = {TeamsBot, authState};

@@ -1,9 +1,8 @@
+const { DefaultAzureCredential, ClientSecretCredential } = require('@azure/identity');
+const mysql = require('mysql2/promise');
 
-mysql = require('mysql2/promise');
 
-const connectionString = process.env.MYSQLCONNSTR_localdb;
 
-// Function to parse the MySQL connection string safely
 
 const parseConnectionString = (connectionString) => {
   const config = {};
@@ -17,10 +16,7 @@ const parseConnectionString = (connectionString) => {
       }
     }
   });
-  console.log("User ID: ", config['user id'])
-  console.log("Password: ", config['password'])
-  console.log("Data Source: ", config['data source'])
-  console.log("Database: ", config['database'])
+
   return {
     host: config['data source'].split(':')[0],
     port: parseInt(config['data source'].split(':')[1], 10) || 3306,
@@ -29,75 +25,246 @@ const parseConnectionString = (connectionString) => {
     database: config['database'],
   };
 };
-const sqlconfig = parseConnectionString(connectionString);
-// Create a connection pool
+
+const sqlconfig = parseConnectionString(process.env.MYSQLCONNSTR_localdb);
 const pool = mysql.createPool(sqlconfig);
 
-
 async function connectToMySQL() {
+  try {
+    // Establish connection
+    connection = await pool.getConnection(sqlconfig);
+
+    console.log('Connected to MySQL In-App');
+
+    const [tables] = await pool.query('SHOW TABLES');
+    console.log('Tables:', tables);
+  
+  }
+  catch (error) {
+    console.error('Error connecting to MySQL:', error);
+  }
+}
+async function queryDatabase() {
+  const config = getMySQLConfig();
+  let connection;
+  try {
+
+    connection = await mysql.createConnection(config);
+
+    console.log('Connected to the database with AAD token.');
+
+    // Execute a query
+    const [rows, fields] = await connection.execute('SELECT * FROM users LIMIT 10');
+    console.log('Query Results:', rows);
+    return result.recordset;
+  } catch (err) {
+    console.error('Error querying the database with AAD token:', err);
+    throw err;
+  }
+}
+
+// Function to retrieve tables from the database
+async function getTables() {
+    let pool;
     try {
-      // Establish connection
-      connection = await pool.getConnection(sqlconfig);
-      console.log('Connected to MySQL In-App');
-
-      const [tables] = await connection.execute('SHOW TABLES');
-      console.log('Tables:', tables);
-
-      const [rows] = await connection.execute('SELECT COUNT(*) AS count FROM users');
-      console.log('Number of rows in Users:', rows[0].count);
-      
-      // Print each row and its values
-      rows.forEach((row, index) => {
-        console.log(`Row ${index + 1}:`);
-        Object.entries(row).forEach(([key, value]) => {
-          console.log(`  ${key}: ${value}`);
-        });
-        console.log('-----------------------------');  // For readability
+      const token = await getAccessToken();
+      pool = await sql.connect({
+        server: 's3-powerbot-server.database.windows.net',
+        database: 's3-powerbot-sqldb',
+        authentication: {
+          type: 'azure-active-directory-access-token',
+          options: {
+            token: token
+          }
+        },
+        options: {
+          encrypt: true
+        }
       });
 
-      // Close the connection
-      await connection.release();
+      const query = `
+        SELECT TABLE_NAME 
+        FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_SCHEMA = 'dbo'
+      `;
+
+      const result = await pool.request().query(query);
+      console.log('Tables:', result.recordset);
+
+      // Return the list of tables if needed
+      return result.recordset;
+
     } catch (error) {
-      console.error('MySQL connection error:', error);
-    }
-  }
-// Function to insert a single row with a uniqueness check
-async function insertSingleRow(name, email) {
-    try {
-      const connection = await pool.getConnection(); // Get a connection from the pool
-  
-      // Check if the user already exists
-      const [existingRows] = await connection.execute(
-        'SELECT * FROM users WHERE name = ? OR email = ?',
-        [name, email]
-      );
-  
-      if (existingRows.length > 0) {
-        console.log(`User with name "${name}" or email "${email}" already exists. Skipping insertion.`);
-        connection.release(); // Release the connection back to the pool
-        return;
+      console.error('Error retrieving tables:', error);
+      throw error; // re-throw so the caller knows something went wrong
+    } finally {
+      if (pool) {
+        pool.close(); // close the connection pool
       }
-  
-      const query = 'INSERT INTO users (name, email) VALUES (?, ?)';
-      const values = [name, email];
-  
-      const [result] = await connection.execute(query, values);
-      console.log('Single row inserted:', result);
-  
-      connection.release(); // Release the connection back to the pool
-    } catch (error) {
-      console.error('Error inserting single row:', error);
     }
-  }
-  async function logCommand(user, command) {
+}
+
+// Function to log a command
+async function logCommand(user, command) {
     try {
-      const query = `INSERT INTO command_logs (user, command, date) VALUES (?, ?, ?)`;
-      const values = [user, command, new Date()]; // Use the current date and time
-  
-      const [result] = await pool.execute(query, values);
-      console.log('Command logged:', result);
+
+      connection = await pool.getConnection(sqlconfig);
+
+      await pool
+        .request()
+        .input('user', sql.VarChar, user)
+        .input('command', sql.VarChar, command)
+        .input('date', sql.DateTime, new Date())
+        .query('INSERT INTO dbo.command_logs (user, command, date) VALUES (@user, @command, @date)');
+
+      console.log('Command logged:', { user, command });
     } catch (error) {
       console.error('Error logging command:', error);
     }
+}
+
+/**
+ * Processes an array of deals by inserting or updating them in the MySQL database.
+ * @param {Array} deals - Array of deal objects to process.
+ * @param {boolean} isUpdate - Indicates whether to perform update operations.
+ */
+const processDeals = async (deals, isUpdate) => {
+  const CONCURRENCY_LIMIT = 10;
+  const asyncLib = require('async');
+
+  return new Promise((resolve, reject) => {
+    asyncLib.eachLimit(
+      deals,
+      CONCURRENCY_LIMIT,
+      async (deal) => {
+        const { id, opportunity_stage_id } = deal;
+        try {
+          if (isUpdate) {
+            await updateOpportunityAndCheck(id, opportunity_stage_id);
+            console.log(`Updated deal with ID: ${id}`);
+          } else {
+            await checkAndInsertOpportunity(id, opportunity_stage_id);
+            console.log(`Inserted deal with ID: ${id}`);
+          }
+        } catch (error) {
+          console.error(`Error processing deal with ID: ${id}`, error.message);
+          // Continue processing other deals
+        }
+      },
+      (err) => {
+        if (err) {
+          console.error('Error processing deals:', err);
+          reject(err);
+        } else {
+          console.log(`All ${deals.length} deals processed successfully.`);
+          resolve();
+        }
+      }
+    );
+  });
+};
+
+/**
+ * Checks if an opportunity exists and inserts it if it does not.
+ * @param {string} id - Opportunity ID.
+ * @param {string} opportunity_stage_id - Stage ID of the opportunity.
+ */
+const checkAndInsertOpportunity = async (id, opportunity_stage_id) => {
+  const connection = await pool.getConnection();
+  try {
+    // Check if the opportunity exists
+    const [rows] = await connection.execute(
+      'SELECT * FROM apollo_opportunities WHERE id = ?',
+      [id]
+    );
+
+    if (rows.length > 0) {
+      console.log(`Opportunity with ID ${id} already exists. Skipping insertion.`);
+      return;
+    }
+
+    // Insert the new opportunity
+    await connection.execute(
+      'INSERT INTO apollo_opportunities (id, opportunity_stage_id, has_changed) VALUES (?, ?, ?)',
+      [id, opportunity_stage_id, false]
+    );
+
+    console.log('Opportunity inserted:', { id, opportunity_stage_id, has_changed: false });
+  } catch (error) {
+    console.error('Error in checkAndInsertOpportunity:', error);
+    throw error;
+  } finally {
+    connection.release();
   }
- module.exports = { pool, connectToMySQL, insertSingleRow, logCommand};
+};
+
+/**
+ * Updates an existing opportunity and checks specific conditions.
+ * @param {string} id - Opportunity ID.
+ * @param {string} opportunity_stage_id - New Stage ID of the opportunity.
+ */
+const updateOpportunityAndCheck = async (id, opportunity_stage_id) => {
+  const connection = await pool.getConnection();
+  try {
+    // Retrieve current opportunity
+    const [rows] = await connection.execute(
+      'SELECT * FROM apollo_opportunities WHERE id = ?',
+      [id]
+    );
+
+    if (rows.length === 0) {
+      console.log(`No record found with ID ${id}.`);
+      return;
+    }
+
+    const currentStageId = rows[0].opportunity_stage_id;
+
+    // Check the specific condition
+    if (
+      currentStageId === '657c6cc9ab96200302cbd0a3' &&
+      opportunity_stage_id === '669141aa1bcf2c04935c3074'
+    ) {
+      console.log('Condition met, setting has_changed to true...');
+      await connection.execute(
+        'UPDATE apollo_opportunities SET has_changed = ? WHERE id = ?',
+        [1, id]
+      );
+
+      // Call TestFunction when condition is met
+      console.log('Calling SyncApolloOpportunities...');
+      await SyncApolloOpportunities(id);
+    }
+
+    // Update the stage ID
+    await connection.execute(
+      'UPDATE apollo_opportunities SET opportunity_stage_id = ? WHERE id = ?',
+      [opportunity_stage_id, id]
+    );
+
+    console.log('Opportunity updated:', { id, opportunity_stage_id });
+  } catch (error) {
+    console.error('Error in updateOpportunityAndCheck:', error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+async function SyncApolloOpportunities(id){
+
+  
+
+  const opportunity = {
+    name: "New Sales Opportunity",
+    notes: notes || "Default opportunity notes",
+    contact: { id: contactId },
+    expectedCloseDate: new Date().toISOString(),  // Required on update
+    locationId: 1,  // Default location
+    businessUnitId: 1,  // Default business unit
+    primarySalesRep: "CAtwell"
+  };
+
+}
+ 
+module.exports = { getTables, logCommand,
+   checkAndInsertOpportunity, updateOpportunityAndCheck, queryDatabase, connectToMySQL, processDeals};

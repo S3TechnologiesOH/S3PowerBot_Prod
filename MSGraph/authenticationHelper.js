@@ -60,7 +60,7 @@ async function initializeGraph(settings, context, authState) {
   
       if (!guestRole.includes(authState.userEmail)) {
         // If not in the guest role, assign them using assignUserRole
-        //await insertSingleRow(authState.userDisplayName, authState.userEmail);
+        await insertSingleRow(authState.userDisplayName, authState.userEmail);
         await assignUserRole(context, "guest", authState.userEmail, false);
       }
 
