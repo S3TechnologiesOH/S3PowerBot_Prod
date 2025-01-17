@@ -1,9 +1,6 @@
 const { DefaultAzureCredential, ClientSecretCredential } = require('@azure/identity');
 const mysql = require('mysql2/promise');
 
-
-
-
 const parseConnectionString = (connectionString) => {
   const config = {};
   const parts = connectionString.split(';');
@@ -104,24 +101,33 @@ async function getTables() {
     }
 }
 
-// Function to log a command
 async function logCommand(user, command) {
-    try {
-
+  let connection; // Define the connection variable
+  try {
+      // Establish connection using MySQL pool
       connection = await pool.getConnection(sqlconfig);
 
-      await pool
-        .request()
-        .input('user', sql.VarChar, user)
-        .input('command', sql.VarChar, command)
-        .input('date', sql.DateTime, new Date())
-        .query('INSERT INTO dbo.command_logs (user, command, date) VALUES (@user, @command, @date)');
+      // Execute the query to log the command
+      const query = `
+          INSERT INTO command_logs (user, command, date)
+          VALUES (?, ?, ?)
+      `;
+      const values = [user, command, new Date()];
+
+      await connection.query(query, values);
 
       console.log('Command logged:', { user, command });
-    } catch (error) {
+  } catch (error) {
       console.error('Error logging command:', error);
-    }
+      throw error; // Re-throw to notify the caller
+  } finally {
+      if (connection) {
+          connection.release(); // Release the connection back to the pool
+      }
+  }
 }
+
+
 
 /**
  * Processes an array of deals by inserting or updating them in the MySQL database.
