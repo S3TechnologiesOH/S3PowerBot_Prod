@@ -2,28 +2,16 @@
   "roles": {
     "admin": [
       "catwell@mys3tech.com",
-      "clarker@mys3tech.com",
-      "thagedorn@mys3tech.com",
-      "nlarker@mys3tech.com",
-      "jlowry@mys3tech.com",
-      "kcrowl@mys3tech.com"
+      "clarker@mys3tech.com"
     ],
     "ticket_management": [],
     "company_management": [],
     "guest": [
       "catwell@mys3tech.com",
+      "JLowry@mys3tech.com",
       "randrews@mys3tech.com",
       "kreolfi@mys3tech.com",
-      "jwagner@mys3tech.com",
-      "rchhetri@mys3tech.com",
-      "kwolff@mys3tech.com",
-      "accounting@mys3tech.com",
-      "jredd@mys3tech.com",
-      "kgohr@mys3tech.com",
-      "mgreen@mys3tech.com",
-      "djohnson@mys3tech.com",
-      "kcrowl@mys3tech.com"
-      
+      "jwagner@mys3tech.com"
     ]
   },
 
